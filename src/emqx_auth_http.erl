@@ -47,12 +47,13 @@ check(Credentials, #{auth_req := AuthReq,
                                 anonymous => false,
                                 mountpoint  => mountpoint(Body, Credentials)}};
         {ok, Code, _Body} ->
+            ?LOG(error, "[Auth http] check_auth Url: ~p login failed. result ~p", [AuthReq#http_request.url, Code]),
             emqx_metrics:inc('auth.http.failure'),
-            {stop, Credentials#{auth_result => Code, anonymous => false}};
+            {stop, Credentials#{auth_result => http_to_connack_error(Code), anonymous => false}};
         {error, Error} ->
             ?LOG(error, "[Auth http] check_auth Url: ~p Error: ~p", [AuthReq#http_request.url, Error]),
             emqx_metrics:inc('auth.http.failure'),
-            {stop, Credentials#{auth_result => Error, anonymous => false}}
+            {stop, Credentials#{auth_result => server_unavailable, anonymous => false}}
     end.
 
 description() -> "Authentication by HTTP API".
@@ -87,3 +88,10 @@ mountpoint(Body, #{mountpoint := Mountpoint}) ->
             Mountpoint
     end.
 
+http_to_connack_error(400) -> bad_username_or_password;
+http_to_connack_error(401) -> bad_username_or_password;
+http_to_connack_error(403) -> not_authorized;
+http_to_connack_error(429) -> banned;
+http_to_connack_error(503) -> server_unavailable;
+http_to_connack_error(504) -> server_busy;
+http_to_connack_error(_) -> server_unavailable.
